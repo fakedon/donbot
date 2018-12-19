@@ -1,0 +1,6 @@
+click
+arrow
+selenium
+logzero
+psutil
+telethon
