@@ -3,4 +3,4 @@ arrow
 selenium
 logzero
 psutil
-telethon
+Telethon-sync
