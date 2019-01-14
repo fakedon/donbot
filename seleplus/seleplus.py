@@ -110,7 +110,7 @@ class FirefoxPlus(object):
         self.update_config()
         self.driver = webdriver.Firefox(**self.config['driver'])
         self.driver.set_window_size(1024, 768)
-        # self.driver.maximize_window()
+        self.driver.maximize_window()
         self.driver.implicitly_wait(10)
         self.profile = self.driver.profile
         self.process = psutil.Process(self.driver.service.process.pid)
