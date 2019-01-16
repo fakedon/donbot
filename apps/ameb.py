@@ -641,6 +641,19 @@ class Ameb(SeleTask):
                 format_length[i] = l
             return ':'.join(reversed(format_length))
 
+    def get_right_length_with_options(self, length, options):
+        length = self.get_right_length(length, no=2)
+        length_t = arrow.get(length, 'HH:mm:ss')
+        for i in range(5):
+            for option in options:
+                value = option.get_attribute("value")
+                value_t = arrow.get(value, 'HH:mm:ss')
+                if length_t == value_t.shift(seconds=+i):
+                    return value
+                if length_t == value_t.shift(seconds=-i):
+                    return value
+        return length
+
     def get_bgcolor(self):
         try:
             body = self.s.driver.find_element(By.TAG_NAME, 'body')
@@ -792,14 +805,14 @@ class Ameb(SeleTask):
                     length_select = self.s.wait().until(EC.presence_of_element_located((By.ID, 'vlen')))
                     length_select = Select(length_select)
                     try:
-                        right_lengt = self.get_right_length(length, no=1)
+                        right_length = self.get_right_length(length, no=1)
                         time.sleep(2)
-                        length_select.select_by_value(right_lengt)
+                        length_select.select_by_value(right_length)
                     except NoSuchElementException:
                         try:
-                            right_lengt = self.get_right_length(length, no=2)
+                            right_length = self.get_right_length_with_options(length, length_select.options)
                             time.sleep(2)
-                            length_select.select_by_value(right_lengt)
+                            length_select.select_by_value(right_length)
                         except NoSuchElementException:
                             self.logger.debug('Can\'t get right length.')
                             continue
