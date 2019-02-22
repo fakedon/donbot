@@ -357,7 +357,7 @@ class Ameb(SeleTask):
     def add_cookie(self):
         cookies = None
         if self.cookie_path.exists():
-            with open(self.cookie_path, 'r') as fp:
+            with open(str(self.cookie_path), 'r') as fp:
                 try:
                     cookies = json.load(fp)
                 except json.JSONDecodeError:
@@ -371,7 +371,7 @@ class Ameb(SeleTask):
     def save_cookie(self):
         cookies = self.s.driver.get_cookies()
         # cookies = [c for c in cookies if 'alexamaster.net' in c.get('domain')]
-        with open(self.cookie_path, 'w') as fp:
+        with open(str(self.cookie_path), 'w') as fp:
             try:
                 json.dump(cookies, fp)
             except Exception:
@@ -978,23 +978,6 @@ class Ameb(SeleTask):
 
                 start = False
 
-                if click == max_click:
-                    if close:
-                        self.s.kill()
-                    start = True
-                    self.logger.debug('Finish, wait %s minutes to continue...', duration / 60)
-                    time.sleep(duration)
-                    continue
-                elif click != 0 and click % 20 == 0:
-                    time.sleep(random.randint(3, 5))
-                    self.logger.debug('Refresh page')
-                    _refresh = True
-                    ads = None
-
-                if _refresh:
-                    self.am_visite_earn_page()
-                    _refresh = False
-
                 if self.am_urls['earn'] not in self.s.driver.current_url:
                     self.am_visite_earn_page()
 
@@ -1011,6 +994,23 @@ class Ameb(SeleTask):
                 else:
                     click = max_click
 
+                if click == max_click:
+                    if close:
+                        self.s.kill()
+                    start = True
+                    self.logger.debug('Finish, wait %s minutes to continue...', duration / 60)
+                    time.sleep(duration)
+                    continue
+                elif click != 0 and click % 20 == 0:
+                    time.sleep(random.randint(3, 5))
+                    self.logger.debug('Refresh page')
+                    _refresh = True
+                    ads = None
+
+                if _refresh:
+                    self.am_visite_earn_page()
+                    _refresh = False
+                    
             except (ConnectionRefusedError):
                 self.logger.debug('Connection refused error, retry')
                 self.s.kill()
