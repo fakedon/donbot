@@ -921,6 +921,7 @@ class Ameb(SeleTask):
         newargs = None
         _refresh = False
         default_args = [click, max_click, c_handle, ads, skip]
+        lastads_skip = False
 
         def kill_f():
             self.s.kill()
@@ -978,6 +979,26 @@ class Ameb(SeleTask):
 
                 start = False
 
+                if click == max_click:
+                    if close:
+                        self.s.kill()
+                    start = True
+                    self.logger.debug('Finish, wait %s minutes to continue...', duration / 60)
+                    time.sleep(duration)
+                    continue
+                elif click != 0 and click % 20 == 0:
+                    if lastads_skip:
+                        lastads_skip = False
+                    else:
+                        time.sleep(random.randint(3, 5))
+                        self.logger.debug('Refresh page')
+                        _refresh = True
+                        ads = None
+
+                if _refresh:
+                    self.am_visite_earn_page()
+                    _refresh = False
+
                 if self.am_urls['earn'] not in self.s.driver.current_url:
                     self.am_visite_earn_page()
 
@@ -994,29 +1015,13 @@ class Ameb(SeleTask):
                 else:
                     click = max_click
 
-                if click == max_click:
-                    if close:
-                        self.s.kill()
-                    start = True
-                    self.logger.debug('Finish, wait %s minutes to continue...', duration / 60)
-                    time.sleep(duration)
-                    continue
-                elif click != 0 and click % 20 == 0:
-                    time.sleep(random.randint(3, 5))
-                    self.logger.debug('Refresh page')
-                    _refresh = True
-                    ads = None
-
-                if _refresh:
-                    self.am_visite_earn_page()
-                    _refresh = False
-                    
             except (ConnectionRefusedError):
                 self.logger.debug('Connection refused error, retry')
                 self.s.kill()
                 c_handle, ads = None, None
                 time.sleep(10)
             except SkipAdsException:
+                lastads_skip = True
                 time.sleep(random.randint(3, 5))
             except StaleElementReferenceException as e:
                 self.logger.exception(e)
