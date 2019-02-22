@@ -921,7 +921,6 @@ class Ameb(SeleTask):
         newargs = None
         _refresh = False
         default_args = [click, max_click, c_handle, ads, skip]
-        lastads_skip = False
 
         def kill_f():
             self.s.kill()
@@ -987,13 +986,10 @@ class Ameb(SeleTask):
                     time.sleep(duration)
                     continue
                 elif click != 0 and click % 20 == 0:
-                    if lastads_skip:
-                        lastads_skip = False
-                    else:
-                        time.sleep(random.randint(3, 5))
-                        self.logger.debug('Refresh page')
-                        _refresh = True
-                        ads = None
+                    time.sleep(random.randint(3, 5))
+                    self.logger.debug('Refresh page')
+                    _refresh = True
+                    ads = None
 
                 if _refresh:
                     self.am_visite_earn_page()
@@ -1007,7 +1003,10 @@ class Ameb(SeleTask):
                     self.am_raise_webdriver("Can't find ads")
                 ads_point = ads.find_element(By.XPATH, './/h4').get_attribute('innerText')
                 if ads_point != '1 Points':
-                    self.am_process_ads(ads, skip=skip)
+                    try:
+                        self.am_process_ads(ads, skip=skip)
+                    except SkipAdsException:
+                        time.sleep(random.randint(3, 5))
                     click += 1
                     current_points = self.am_get_total_points()
                     self.logger.debug('Click: %s, Points: %s', click, current_points)
@@ -1020,9 +1019,8 @@ class Ameb(SeleTask):
                 self.s.kill()
                 c_handle, ads = None, None
                 time.sleep(10)
-            except SkipAdsException:
-                lastads_skip = True
-                time.sleep(random.randint(3, 5))
+            # except SkipAdsException:
+            #     time.sleep(random.randint(3, 5))
             except StaleElementReferenceException as e:
                 self.logger.exception(e)
                 ads = None
