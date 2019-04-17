@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 
-BASE_DIR = Path()
+BASE_DIR = Path(__file__).parent.resolve()
 LOG_DIR = Path(BASE_DIR, 'log')
 if not LOG_DIR.exists():
     LOG_DIR.mkdir()
