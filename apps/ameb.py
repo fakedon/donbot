@@ -462,14 +462,19 @@ class Ameb(SeleTask):
                     daily.location_once_scrolled_into_view
                     self.s.driver.execute_script('dailyBonus(this);')
                     time.sleep(random.randint(3, 5))
-                    try_tomorrow = self.s.driver.find_element(By.XPATH, '//div[@class="swal2-content"]/h4')
-                    if try_tomorrow.get_attribute('innerText') == 'Please try again tomorrow!':
+                    try_tomorrow = self.s.driver.find_element(By.XPATH, '//h2[@class="swal2-title"]')
+                    if 'Wow Amazing!' in try_tomorrow.get_attribute('innerText'):
                         self.s.driver.find_element(By.CLASS_NAME, 'swal2-confirm').click()
-                        self.logger.debug('Please try again tomorrow!')
-
                         last_check = datetime.datetime.today()
                         with open(check_file, 'w') as fp:
                             fp.write(last_check.strftime(date_format))
+                        break
+                    elif 'Please try again tomorrow!' in try_tomorrow.get_attribute('innerText'):
+                        self.s.driver.find_element(By.CLASS_NAME, 'swal2-confirm').click()
+                        self.logger.debug('Please try again tomorrow!')
+                        break
+                    else:
+                        self.am_clean_swal2()
                         break
                 except Exception:
                     continue
