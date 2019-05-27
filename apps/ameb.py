@@ -60,6 +60,7 @@ class Ameb(SeleTask):
 
     am_urls = {
         'home': 'https://www.alexamaster.net/',
+        'login': 'https://www.alexamaster.net/sec/login.php',
         'account': 'https://www.alexamaster.net/a',
         'profile': 'https://www.alexamaster.net/a/my_profile.php',
         'earn': 'https://www.alexamaster.net/a/earn_points.php',
@@ -339,9 +340,14 @@ class Ameb(SeleTask):
 
     def am_login(self):
         self.s.get(self.am_urls['home'])
-        # _login = self.s.find_element(self.am_locators['login'])
-        _login = self.s.driver.find_element(*self.am_locators['login'])
-        self.s.click(_login)
+        try:
+            # _login = self.s.find_element(self.am_locators['login'])
+            _login = self.s.driver.find_element(*self.am_locators['login'])
+            self.s.click(_login)
+        except NoSuchElementException:
+            self.s.get(self.am_urls['login'])
+            time.sleep(2)
+            
         un_input = self.s.find_element(self.am_locators['username'])
         pw_input = self.s.driver.find_element(*self.am_locators['password'])
         self.s.clear(un_input)
