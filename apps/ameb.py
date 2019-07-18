@@ -8,17 +8,14 @@ import time
 from pathlib import Path
 
 import arrow
-
-from selenium.common.exceptions import (
-    NoSuchElementException,
-    NoSuchFrameException,
-    NoSuchWindowException,
-    TimeoutException,
-    WebDriverException,
-    StaleElementReferenceException,
-    UnexpectedAlertPresentException,
-    ElementNotInteractableException
-)
+from selenium.common.exceptions import (ElementNotInteractableException,
+                                        NoSuchElementException,
+                                        NoSuchFrameException,
+                                        NoSuchWindowException,
+                                        StaleElementReferenceException,
+                                        TimeoutException,
+                                        UnexpectedAlertPresentException,
+                                        WebDriverException)
 from selenium.webdriver.common.action_chains import ActionChains as AC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -27,9 +24,8 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 
 # sys.path.append(sys.path[0] + "/..")
 from apps.seletask import SeleTask, new_windows_opened
-from utils.telegram import get_tg
-from utils.utils import retry
 from settings import LOG_DIR
+from utils.utils import retry
 
 
 class SkipAdsException(WebDriverException):
@@ -67,6 +63,7 @@ class Ameb(SeleTask):
         'pay': 'https://www.alexamaster.net/a/payout_list.php',
         'surf': 'https://www.alexamaster.net/Master/',
         'register': 'https://www.alexamaster.net/sec/register.php',
+        'captcha': 'https://www.alexamaster.net/sec/image.php',
     }
 
     eb_locators = {
@@ -79,6 +76,7 @@ class Ameb(SeleTask):
         'dashboard': 'https://www.ebesucher.com/login.html',
         'inbox': 'https://www.ebesucher.com/mailviewer.html',
         'surf': 'http://www.ebesucher.com/surfbar/',
+        'monitor': 'http://www.ebesucher.com/c/earn-money-mlm?surfForUser=',
     }
 
     errors = {
@@ -92,6 +90,7 @@ class Ameb(SeleTask):
             'Failed to write response to stream',
             'Tried to run command without establishing a connection',
             'No browser exists',
+            'Reached error page',
         ),
     }
 
@@ -105,6 +104,8 @@ class Ameb(SeleTask):
                 task_name.append('am_' + self.extra.get('am_url'))
         elif self.task == 'am_emu':
             task_name.append(self.extra.get('am_un'))
+        elif self.task == 'eb_emu':
+            task_name.append(self.extra.get('eb_un'))
 
         _config = self._config.get('config')
         if _config:
@@ -245,6 +246,134 @@ class Ameb(SeleTask):
                 self.logger.debug('wait %s seconds to recheck...', wait)
                 time.sleep(wait)
 
+    def ameb2(self, cron=False, duration=None, wait=None):
+        am_url = self.extra.get('am_url')
+        if am_url:
+            if am_url.startswith(self.am_urls['surf']):
+                pass
+            else:
+                am_url = self.am_urls['surf'] + am_url
+        eb_url = self.extra.get('eb_url')
+        if eb_url:
+            m = re.match(r'.*www.ebesucher.com/surfbar/([a-zA-Z0-9_-]+)', eb_url)
+            if m:
+                eb_monitor = self.eb_urls['monitor'] + m.group(1)
+            else:
+                eb_monitor = self.eb_urls['monitor'] + eb_url
+        if not am_url and not eb_url:
+            self.logger.debug('Please set at least one, am_url and eb_url')
+            self.logger.debug('Exit')
+            self.s.kill()
+            sys.exit()
+        else:
+            _duration = duration
+            wait = wait or 180
+            eb_handle, am_handle = (None, None)
+            r_handles, l_handles = set(), set()
+            start_time = datetime.datetime.now()
+            _alert_exist = False
+
+            while True:
+                try:
+                    if _alert_exist:
+                        _alert_exist = False
+                        self.s.close_alert()
+                        continue
+
+                    if self.s.driver is None:
+                        self.s.start()
+                        start_time = datetime.datetime.now()
+                        if _duration is None:
+                            duration = random.randint(2 * 60 * 60, 4 * 60 * 60)
+                        continue
+
+                    if l_handles:
+                        s_handles = l_handles.intersection(set(self.s.driver.window_handles))
+                        self.s.close_handles(s_handles, r_handles)
+                        self.s.driver.switch_to.window(self.s.driver.window_handles[0])
+                    l_handles = set(self.s.driver.window_handles)
+
+                    check_time = datetime.datetime.now()
+                    time_passed = check_time - start_time
+                    if time_passed.total_seconds() > duration:
+                        if cron:
+                            self.s.kill()
+                            time.sleep(5)
+                            break
+                        else:
+                            self.s.kill()
+                            eb_handle, am_handle = (None, None)
+                            r_handles, l_handles = set(), set()
+                            time.sleep(5)
+                            continue
+                    try:
+                        eb_e = None
+                        if eb_url:
+                            if eb_handle is None:
+                                eb_handle = self.s.driver.current_window_handle
+
+                            if eb_handle:
+                                r_handles.add(eb_handle)
+                                self.eb_check2(eb_monitor, eb_handle)
+                                for h in self.s.driver.window_handles:
+                                    self.s.driver.switch_to.window(h)
+                                    if 'ebesucher.com' in self.s.driver.current_url:
+                                        r_handles.add(h)
+                    except Exception as e:
+                        eb_e = e
+
+                    try:
+                        am_e = None
+                        if am_url:
+                            if am_handle is None:
+                                if eb_url is None:
+                                    am_handle = self.s.driver.current_window_handle
+                                else:
+                                    am_handle = self.s.get_new_window()
+
+                            if am_handle:
+                                r_handles.add(am_handle)
+                                self.am_check(am_url, am_handle)
+                    except Exception as e:
+                        am_e = e
+
+                    if eb_e:
+                        raise eb_e
+                    if am_e:
+                        raise am_e
+
+                except KeyboardInterrupt:
+                    self.s.kill()
+                    self.logger.debug('Exit')
+                    raise
+                except (ConnectionRefusedError) as e:
+                    self.logger.exception(e)
+                    time.sleep(5)
+                    self.s.kill()
+                    eb_handle, am_handle = (None, None)
+                    r_handles, l_handles = set(), set()
+                    time.sleep(5)
+                except UnexpectedAlertPresentException as e:
+                    _alert_exist = True
+                except (TimeoutException, NoSuchWindowException, WebDriverException) as e:
+                    if e.msg in self.errors['b']:
+                        self.logger.exception(e)
+                        time.sleep(5)
+                        self.s.kill()
+                        eb_handle, am_handle = (None, None)
+                        r_handles, l_handles = set(), set()
+                        time.sleep(5)
+                        continue
+                    else:
+                        self.logger.exception(e)
+                        time.sleep(5)
+                except Exception as e:
+                    self.logger.exception(e)
+                    time.sleep(5)
+
+                self.logger.debug('wait %s seconds to recheck...', wait)
+                time.sleep(wait)
+
     def eb_check(self, eb_url, eb_handle):
         if eb_handle is None:
             self.logger.debug('eb_handle is None')
@@ -286,6 +415,30 @@ class Ameb(SeleTask):
         else:
             self.logger.debug('Check: eb_url not match, refresh')
             self.s.get(eb_url)
+        self.logger.debug('Check: eb_check done')
+
+    def eb_check2(self, eb_monitor, eb_handle):
+        if eb_handle is None:
+            self.logger.debug('eb_handle is None')
+            return
+        self.s.driver.switch_to.window(eb_handle)
+        if eb_monitor != self.s.driver.current_url:
+            self.logger.debug('Check: eb_monitor not match, visit eb_monitor')
+            self.s.get(eb_monitor)
+            time.sleep(3)
+        try:
+            surfbar_status_element = self.s.driver.find_element(By.ID, 'surfbar_status')
+            if surfbar_status_element.is_displayed():
+                surfbar_status = surfbar_status_element.get_attribute('innerText')
+                self.logger.debug('surfbar_status: %s', surfbar_status)
+            else:
+                try:
+                    surf_now_button = self.s.driver.find_element(By.ID, 'surf_now_button')
+                    self.s.driver.execute_script("arguments[0].click();", surf_now_button)
+                except (NoSuchElementException, StaleElementReferenceException) as e:
+                    pass
+        except (NoSuchElementException, StaleElementReferenceException) as e:
+            pass
         self.logger.debug('Check: eb_check done')
 
     def am_check(self, am_url, am_handle):
@@ -347,7 +500,7 @@ class Ameb(SeleTask):
         except NoSuchElementException:
             self.s.get(self.am_urls['login'])
             time.sleep(2)
-            
+
         un_input = self.s.find_element(self.am_locators['username'])
         pw_input = self.s.driver.find_element(*self.am_locators['password'])
         self.s.clear(un_input)
@@ -358,12 +511,30 @@ class Ameb(SeleTask):
         _go = self.s.driver.find_element(*self.am_locators['go'])
         self.s.click(_go)
         time.sleep(3)
+        if self.s.driver.current_url == 'https://www.alexamaster.net/sec/loginvalidate.php':
+            self.send_tg_msg('please solve login captcha: ' + self.task_name)
+            while True:
+                # _input = input('Login(Please enter "y" "yes" "ok" "n" "no" or "retry")?')
+                # if _input.isalpha():
+                #     if _input.lower() in ['y', 'yes', 'ok']:
+                #         self.logger.debug('Login success')
+                #         break
+                #     elif _input.lower() in ['n', 'no']:
+                #         self.logger.debug('Login failed')
+                #         raise WebDriverException('login failed')
+                #     elif _input.lower() in ['retry']:
+                #         self.logger.debug('Retry')
+                #         time.sleep(10)
+                time.sleep(5)
+                if self.s.driver.current_url == 'https://www.alexamaster.net/sec/loginconfirm.php':
+                    self.logger.debug('Login success')
+                    break
         self.s.get(self.am_urls['account'])
 
     def add_cookie(self):
         cookies = None
         if self.cookie_path.exists():
-            with open(str(self.cookie_path), 'r') as fp:
+            with open(self.cookie_path, 'r') as fp:
                 try:
                     cookies = json.load(fp)
                 except json.JSONDecodeError:
@@ -377,7 +548,7 @@ class Ameb(SeleTask):
     def save_cookie(self):
         cookies = self.s.driver.get_cookies()
         # cookies = [c for c in cookies if 'alexamaster.net' in c.get('domain')]
-        with open(str(self.cookie_path), 'w') as fp:
+        with open(self.cookie_path, 'w') as fp:
             try:
                 json.dump(cookies, fp)
             except Exception:
@@ -508,8 +679,11 @@ class Ameb(SeleTask):
             self.logger.debug('Request money')
             self.s.driver.find_element(*self.am_locators['pay']).click()
             time.sleep(3)
-            last_pay = self.s.driver.find_element(By.XPATH, '//tbody/tr[1]').get_attribute('innerText')
-            self.send_tg_msg('Last pay: %s' % last_pay)
+            try:
+                last_pay = self.s.driver.find_element(By.XPATH, '//tbody/tr[1]').get_attribute('innerText')
+                self.send_tg_msg('Last pay: %s' % last_pay)
+            except Exception:
+                pass
             _request = self.s.find_element(self.am_locators['request'])
             _request.click()
             # self.s.driver.find_element_by_link_text('Request').click()
@@ -529,6 +703,8 @@ class Ameb(SeleTask):
                 else:
                     _amount = str(_amount)
                 newpay1 = card.find_element(By.ID, 'newpay1')
+                if self.extra.get('paypal'):
+                    newpay1.send_keys(self.extra.get('paypal'))
                 newpay2 = Select(card.find_element(By.ID, 'newpay2'))
                 newpay2.select_by_value(_amount)
                 newpay3 = Select(card.find_element(By.ID, 'newpay3'))
@@ -554,14 +730,6 @@ class Ameb(SeleTask):
                 except TimeoutException:
                     self.logger.debug('Cash out failure.')
             time.sleep(5)
-
-    def send_tg_msg(self, msg):
-        try:
-            tg = get_tg()
-            if tg:
-                tg.send_message('saythx', msg)
-        except Exception as e:
-            self.logger.exception(e)
 
     def am_clean_swal2(self):
         while True:
@@ -666,17 +834,17 @@ class Ameb(SeleTask):
         return length
 
     def get_bgcolor(self):
-        try:
-            body = self.s.driver.find_element(By.TAG_NAME, 'body')
-        except NoSuchElementException:
-            try:
-                _frame = self.s.driver.find_element(By.TAG_NAME, 'frame')
-                self.s.driver.switch_to.frame(_frame)
-            except NoSuchElementException:
-                pass
-        except UnexpectedAlertPresentException:
-            self.s.driver.switch_to.alert.dismiss()
-            self.s.driver.switch_to_default_content()
+        # try:
+        #     body = self.s.driver.find_element(By.TAG_NAME, 'body')
+        # except NoSuchElementException:
+        #     try:
+        #         _frame = self.s.driver.find_element(By.TAG_NAME, 'frame')
+        #         self.s.driver.switch_to.frame(_frame)
+        #     except NoSuchElementException:
+        #         pass
+        # except UnexpectedAlertPresentException:
+        #     self.s.driver.switch_to.alert.dismiss()
+        #     self.s.driver.switch_to_default_content()
 
         try:
             body = self.s.driver.find_element(By.TAG_NAME, 'body')
@@ -796,6 +964,7 @@ class Ameb(SeleTask):
                     self.s.driver.switch_to.window(c_handle)
                     self.logger.debug('Check swal pop and clean it')
                     self.am_clean_swal2()
+                    self.s.close_handles(self.s.driver.window_handles, exclude=[c_handle])
                     ads_inner.click()
                     if self.s.wait().until(new_windows_opened(_handles)):
                         _new_open_handles = [h for h in self.s.driver.window_handles if h not in _handles]
@@ -1014,10 +1183,7 @@ class Ameb(SeleTask):
                     self.am_raise_webdriver("Can't find ads")
                 ads_point = ads.find_element(By.XPATH, './/h4').get_attribute('innerText')
                 if ads_point != '1 Points':
-                    try:
-                        self.am_process_ads(ads, skip=skip)
-                    except SkipAdsException:
-                        time.sleep(random.randint(3, 5))
+                    self.am_process_ads(ads, skip=skip)
                     click += 1
                     current_points = self.am_get_total_points()
                     self.logger.debug('Click: %s, Points: %s', click, current_points)
@@ -1030,8 +1196,8 @@ class Ameb(SeleTask):
                 self.s.kill()
                 c_handle, ads = None, None
                 time.sleep(10)
-            # except SkipAdsException:
-            #     time.sleep(random.randint(3, 5))
+            except SkipAdsException:
+                time.sleep(random.randint(3, 5))
             except StaleElementReferenceException as e:
                 self.logger.exception(e)
                 ads = None
