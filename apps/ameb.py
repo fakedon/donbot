@@ -704,6 +704,7 @@ class Ameb(SeleTask):
                     _amount = str(_amount)
                 newpay1 = card.find_element(By.ID, 'newpay1')
                 if self.extra.get('paypal'):
+                    self.s.clear(newpay1)
                     newpay1.send_keys(self.extra.get('paypal'))
                 newpay2 = Select(card.find_element(By.ID, 'newpay2'))
                 newpay2.select_by_value(_amount)
